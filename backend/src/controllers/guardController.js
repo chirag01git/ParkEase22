@@ -4,6 +4,25 @@ const Mall = require('../models/Mall');
 const { calculateBilling } = require('../services/billingService');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 
+const MAX_GUARD_PAYMENT_RECORDS = 100;
+
+// Retain all bills that still need action, then keep only the newest completed records up to the dashboard limit.
+const pruneGuardPaymentHistory = async () => {
+  const activeCount = await Booking.countDocuments({
+    bookingStatus: { $in: ['PAYMENT_PENDING', 'PAYMENT_PAID'] },
+  });
+  const completedToKeep = Math.max(0, MAX_GUARD_PAYMENT_RECORDS - activeCount);
+  const expiredRecords = await Booking.find({ bookingStatus: 'COMPLETED' })
+    .sort({ exitTime: -1, _id: -1 })
+    .skip(completedToKeep)
+    .select('_id')
+    .lean();
+
+  if (expiredRecords.length > 0) {
+    await Booking.deleteMany({ _id: { $in: expiredRecords.map((record) => record._id) } });
+  }
+};
+
 // POST /api/guard/verify-entry
 const verifyEntry = async (req, res, next) => {
   try {
@@ -150,6 +169,7 @@ const releasePaidVehicle = async (req, res, next) => {
     booking.bookingStatus = 'COMPLETED';
     await booking.save();
     if (booking.slot) await ParkingSlot.findByIdAndUpdate(booking.slot._id, { status: 'AVAILABLE' });
+    await pruneGuardPaymentHistory();
 
     return sendSuccess(res, 'Payment confirmed. Vehicle released and parking slot is now available.', { booking });
   } catch (error) {
@@ -160,12 +180,13 @@ const releasePaidVehicle = async (req, res, next) => {
 // GET /api/guard/payments (Recent exited bookings and their payment state)
 const getRecentPayments = async (req, res, next) => {
   try {
+    await pruneGuardPaymentHistory();
     const payments = await Booking.find({ bookingStatus: { $in: ['PAYMENT_PENDING', 'PAYMENT_PAID', 'COMPLETED'] } })
       .populate('mall', 'name city')
       .populate('slot', 'slotNumber')
       .populate('user', 'name phone')
       .sort({ exitTime: -1 })
-      .limit(25);
+      .limit(MAX_GUARD_PAYMENT_RECORDS);
 
     return sendSuccess(res, 'Recent payment statuses retrieved.', { payments });
   } catch (error) {

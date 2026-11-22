@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getGuardPaymentsApi, releasePaidVehicleApi, verifyEntryApi, verifyExitApi } from '../../api/services';
 import StatusBadge from '../../components/StatusBadge';
-import { QrCode, LogIn, LogOut, AlertCircle, CheckCircle2, ShieldCheck, DollarSign, Clock, CreditCard, RefreshCw, Unlock } from 'lucide-react';
+import { QrCode, LogIn, LogOut, AlertCircle, CheckCircle2, ShieldCheck, DollarSign, Clock, CreditCard, RefreshCw, Unlock, BellRing } from 'lucide-react';
 
 const GuardDashboard = () => {
   const [qrToken, setQrToken] = useState('');
@@ -13,11 +13,40 @@ const GuardDashboard = () => {
   const [payments, setPayments] = useState([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [releasingId, setReleasingId] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState(null);
+  const previousPaymentStates = useRef(new Map());
+  const hasLoadedPayments = useRef(false);
 
   const loadPaymentStatuses = async () => {
     try {
       const res = await getGuardPaymentsApi();
-      if (res.data.success) setPayments(res.data.data.payments);
+      if (res.data.success) {
+        const latestPayments = res.data.data.payments;
+        const latestStates = new Map(latestPayments.map((payment) => [payment._id, payment.paymentStatus]));
+        if (hasLoadedPayments.current) {
+          const newlyPaid = latestPayments.find((payment) => payment.paymentStatus === 'PAID' && previousPaymentStates.current.get(payment._id) !== 'PAID');
+          if (newlyPaid) {
+            setPaymentNotice({
+              vehicleNumber: newlyPaid.vehicleNumber,
+              paidAt: newlyPaid.paidAt || new Date().toISOString(),
+              amount: newlyPaid.amount,
+            });
+          }
+        } else {
+          // Also show the latest verified payment after a guard page refresh or a new guard login.
+          const latestPaid = latestPayments.find((payment) => payment.paymentStatus === 'PAID');
+          if (latestPaid) {
+            setPaymentNotice({
+              vehicleNumber: latestPaid.vehicleNumber,
+              paidAt: latestPaid.paidAt || new Date().toISOString(),
+              amount: latestPaid.amount,
+            });
+          }
+        }
+        previousPaymentStates.current = latestStates;
+        hasLoadedPayments.current = true;
+        setPayments(latestPayments);
+      }
     } catch (err) {
       console.error('Failed to load payment statuses', err);
     } finally {
@@ -44,8 +73,12 @@ const GuardDashboard = () => {
 
   useEffect(() => {
     loadPaymentStatuses();
-    const refreshTimer = window.setInterval(loadPaymentStatuses, 15000);
-    return () => window.clearInterval(refreshTimer);
+    const refreshTimer = window.setInterval(loadPaymentStatuses, 5000);
+    window.addEventListener('focus', loadPaymentStatuses);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', loadPaymentStatuses);
+    };
   }, []);
 
   const handleVerify = async (e) => {
@@ -84,6 +117,13 @@ const GuardDashboard = () => {
         </h1>
         <p className="page-subtitle">Scan or paste QR pass tokens to process server-verified entry & exit</p>
       </div>
+
+      {paymentNotice && (
+        <div className="alert alert-success" style={{ marginBottom: '1.5rem', justifyContent: 'space-between' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><BellRing size={19} /> Payment received: <strong>{paymentNotice.vehicleNumber}</strong> paid ₹{paymentNotice.amount} at {new Date(paymentNotice.paidAt).toLocaleTimeString()}.</span>
+          <button type="button" onClick={() => setPaymentNotice(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700 }}>×</button>
+        </div>
+      )}
 
       {/* Mode Selection Tabs */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -214,9 +254,9 @@ const GuardDashboard = () => {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>SLOT RELEASED</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#34d399', marginTop: '0.25rem' }}>
-                      AVAILABLE
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>PARKING SLOT</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fbbf24', marginTop: '0.25rem' }}>
+                      HELD FOR RELEASE
                     </div>
                   </div>
                   <div>
@@ -234,7 +274,7 @@ const GuardDashboard = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CreditCard size={20} color="#60a5fa" /> Recent Payment Status</h2>
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>Updates automatically every 15 seconds after the user completes Razorpay checkout.</p>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>Updates automatically every 5 seconds. The newest 100 payment records are retained; older completed records are removed.</p>
           </div>
           <button className="btn btn-outline" onClick={() => { setPaymentsLoading(true); loadPaymentStatuses(); }} style={{ padding: '0.45rem 0.7rem', fontSize: '0.8rem' }} disabled={paymentsLoading}>
             <RefreshCw size={15} /> Refresh
@@ -248,13 +288,14 @@ const GuardDashboard = () => {
         ) : (
           <div className="table-responsive">
             <table className="custom-table">
-              <thead><tr><th>Vehicle</th><th>Mall / Slot</th><th>Bill</th><th>Payment</th><th>Reference</th><th>Action</th></tr></thead>
+              <thead><tr><th>Vehicle</th><th>Mall / Slot</th><th>Bill</th><th>Booking Status</th><th>Payment</th><th>Reference</th><th>Action</th></tr></thead>
               <tbody>
                 {payments.map((payment) => (
                   <tr key={payment._id}>
                     <td><strong>{payment.vehicleNumber}</strong><div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{payment.user?.name || 'User'}</div></td>
                     <td>{payment.mall?.name || 'Mall'}<div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{payment.slot?.slotNumber || 'Slot'}</div></td>
                     <td>₹{payment.amount}</td>
+                    <td><StatusBadge status={payment.bookingStatus} /></td>
                     <td><StatusBadge status={payment.paymentStatus || 'PENDING'} /></td>
                     <td><code style={{ color: payment.paymentReference ? '#38bdf8' : '#94a3b8', fontSize: '0.75rem' }}>{payment.paymentReference || 'Awaiting payment'}</code></td>
                     <td>{payment.bookingStatus === 'PAYMENT_PAID' ? <button className="btn btn-success" style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem' }} onClick={() => releaseVehicle(payment)} disabled={releasingId === payment._id}><Unlock size={14} /> {releasingId === payment._id ? 'Releasing…' : 'Release'}</button> : payment.bookingStatus === 'PAYMENT_PENDING' ? <span style={{ color: '#fbbf24', fontSize: '0.78rem', fontWeight: 700 }}>Awaiting user payment</span> : <span style={{ color: '#34d399', fontSize: '0.78rem', fontWeight: 700 }}>Released</span>}</td>

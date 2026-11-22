@@ -95,7 +95,7 @@ const PaymentCheckout = () => {
     );
   }
 
-  const paymentAvailable = booking.bookingStatus === 'PAYMENT_PENDING' && booking.amount > 0;
+  const paymentAvailable = ['PAYMENT_PENDING', 'COMPLETED'].includes(booking.bookingStatus) && booking.amount > 0 && booking.paymentStatus !== 'PAID';
   return (
     <div style={{ maxWidth: '580px', margin: '0 auto' }}>
       <Link to={`/user/bookings/${id}`} className="btn btn-outline" style={{ marginBottom: '1.25rem', padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}><ArrowLeft size={16} /> Back to ticket</Link>

@@ -14,6 +14,12 @@ const UserDashboard = () => {
 
   useEffect(() => {
     fetchData();
+    const refreshTimer = window.setInterval(fetchData, 5000);
+    window.addEventListener('focus', fetchData);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', fetchData);
+    };
   }, []);
 
   const fetchData = async () => {
@@ -120,6 +126,11 @@ const UserDashboard = () => {
                 <p style={{ fontSize: '0.8rem', color: '#34d399', marginTop: '0.35rem' }}>
                   Entered Gate: {new Date(activeBooking.entryTime).toLocaleTimeString()}
                 </p>
+              )}
+              {activeBooking.bookingStatus === 'PAYMENT_PENDING' && (
+                <div className="alert alert-info" style={{ marginTop: '0.85rem', marginBottom: 0 }}>
+                  <CreditCard size={17} /> Exit confirmed by guard. Your parking bill is ₹{activeBooking.amount}; complete payment to continue to release.
+                </div>
               )}
             </div>
 

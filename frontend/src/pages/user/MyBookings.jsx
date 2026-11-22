@@ -129,7 +129,7 @@ const MyBookings = () => {
                           <Eye size={14} />
                         </Link>
 
-                        {b.bookingStatus === 'PAYMENT_PENDING' && b.amount > 0 && b.paymentStatus !== 'PAID' && (
+                        {['PAYMENT_PENDING', 'COMPLETED'].includes(b.bookingStatus) && b.amount > 0 && b.paymentStatus !== 'PAID' && (
                           <Link to={`/user/bookings/${b._id}/pay`} className="btn btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                             <CreditCard size={14} /> Pay Now
                           </Link>

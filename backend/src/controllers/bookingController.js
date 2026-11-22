@@ -220,7 +220,8 @@ const deleteBookingHistory = async (req, res, next) => {
 const ensurePaymentReady = (booking, userId) => {
   const bookingUserId = booking.user?._id ? booking.user._id.toString() : booking.user.toString();
   if (bookingUserId !== userId) return 'Unauthorized to pay for this booking';
-  if (booking.bookingStatus !== 'PAYMENT_PENDING' || !booking.exitTime) {
+  // COMPLETED + PENDING is supported only for bookings created by an older server version.
+  if (!['PAYMENT_PENDING', 'COMPLETED'].includes(booking.bookingStatus) || !booking.exitTime) {
     return 'Payment is available after the vehicle exit has been verified and the bill is calculated.';
   }
   if (booking.paymentStatus === 'PAID') return 'This parking bill has already been paid.';
