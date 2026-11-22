@@ -146,6 +146,38 @@ npm run dev
 
 ---
 
+## Deploying to Render and Vercel
+
+The `.env.example` files are templates only. Do not put production secrets in GitHub. Add the real values in the hosting dashboards.
+
+### Render — Backend Web Service
+
+Set the Render service root directory to `backend`, build command to `npm install`, and start command to `npm start`. Then set these environment variables in **Render → Environment**:
+
+```text
+MONGO_URI=<your MongoDB Atlas URI>
+JWT_SECRET=<a long random secret>
+CLIENT_URL=https://<your-vercel-project>.vercel.app
+EMAIL_USER=<your Gmail sender address>
+EMAIL_APP_PASSWORD=<16-character Gmail App Password>
+RAZORPAY_KEY_ID=<Razorpay test or live key ID>
+RAZORPAY_KEY_SECRET=<matching Razorpay key secret>
+```
+
+For OTPs, Gmail must use an App Password created with two-step verification; a normal Gmail password will not work. After saving the values, redeploy the Render service.
+
+### Vercel — Frontend
+
+Set the Vercel project root directory to `frontend`. Add this environment variable in **Vercel → Settings → Environment Variables** for Production (and Preview if required):
+
+```text
+VITE_API_URL=https://<your-render-service>.onrender.com/api
+```
+
+Vite reads `VITE_*` variables when it builds, so redeploy Vercel after saving the variable. Use the exact deployed Vercel URL in Render's `CLIENT_URL`, without a trailing slash.
+
+---
+
 ## Automated Testing & Concurrency Verification
 
 Run automated test suites inside `ParkEase/backend`:

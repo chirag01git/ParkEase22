@@ -13,8 +13,17 @@ const adminRoutes = require('./routes/adminRoutes');
 const app = express();
 
 // Middleware setup
+const allowedOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin(origin, callback) {
+    // Allow non-browser tools (health checks, Postman) and configured frontend domains.
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
 }));
 app.use(express.json());
